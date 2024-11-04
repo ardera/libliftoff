@@ -67,6 +67,17 @@ liftoff_plane_create(struct liftoff_device *device, uint32_t id)
 	}
 	plane->id = drm_plane->plane_id;
 	plane->possible_crtcs = drm_plane->possible_crtcs;
+	
+	plane->legacy_formats_len = drm_plane->count_formats;
+	plane->legacy_formats = malloc(drm_plane->count_formats * sizeof(uint32_t));
+	if (plane->legacy_formats == NULL) {
+		liftoff_log_errno(LIFTOFF_ERROR, "malloc");
+		return NULL;
+	}
+
+	memcpy(plane->legacy_formats, drm_plane->formats,
+	       drm_plane->count_formats * sizeof(uint32_t));
+
 	drmModeFreePlane(drm_plane);
 
 	drm_props = drmModeObjectGetProperties(device->drm_fd, id,
@@ -169,6 +180,7 @@ liftoff_plane_destroy(struct liftoff_plane *plane)
 	liftoff_list_remove(&plane->link);
 	free(plane->props);
 	drmModeFreePropertyBlob(plane->in_formats_blob);
+	free(plane->legacy_formats);
 	free(plane);
 }
 
@@ -312,11 +324,25 @@ plane_check_layer_fb(struct liftoff_plane *plane, struct liftoff_layer *layer)
 	ssize_t format_index, modifier_index;
 	int format_shift;
 
-	/* TODO: add support for legacy format list with implicit modifier */
-	if (layer->fb_info.fb_id == 0 ||
-	    !(layer->fb_info.flags & DRM_MODE_FB_MODIFIERS) ||
-	    plane->in_formats_blob == NULL) {
+	if (layer->fb_info.fb_id == 0) {
 		return true; /* not enough information to reject */
+	}
+
+	if (!(layer->fb_info.flags & DRM_MODE_FB_MODIFIERS)) {
+		/* The framebuffer we want to present has no modifier set.
+		   Check the legacy format list. */
+		for (size_t i = 0; i < plane->legacy_formats_len; i++) {
+			if (plane->legacy_formats[i] == layer->fb_info.pixel_format) {
+				return true;
+			}
+		}
+
+		return false;
+	} else if (plane->in_formats_blob == NULL) {
+		/// TODO: Is this really accurate?
+		/* The plane has a modifier set, but the plane does not
+		   support modifiers. */
+		return false;
 	}
 
 	set = plane->in_formats_blob->data;

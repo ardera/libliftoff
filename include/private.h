@@ -94,6 +94,13 @@ struct liftoff_plane {
 	uint32_t possible_crtcs;
 	uint32_t type;
 	int zpos; /* greater values mean closer to the eye */
+	
+	/**
+	 * Supported legacy (implicit modifier) formats.
+	 */
+	uint32_t *legacy_formats;
+	size_t legacy_formats_len;
+
 	struct liftoff_list link; /* liftoff_device.planes */
 
 	drmModePropertyRes **props;
